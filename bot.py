@@ -109,19 +109,30 @@ def packages_navigation():
         click_element("//h2[@class='section-header'][contains(text(), 'Opcje')]")
 
 def filter_packages(category, colour):
-    if isinstance(category,int) and isinstance(colour, int):
+    if category == "None":
+        category = "Wszystko"
+    if colour == "None":
+        colour = "Normalny"
+    if filter_packages_is_number(category) and filter_packages_is_number(colour):
         click_element("//select[@name = 'f']//option[text() = '" + str(get_category_packages(category)) + "']")
         click_element("//select[@name = 'fq']//option[text() = '" + str(quality_pack(colour)) + "']")
-    elif isinstance(category, int) and not isinstance(colour, int):
+    elif filter_packages_is_number(category) and not filter_packages_is_number(colour):
         click_element("//select[@name = 'f']//option[text() = '" + str(get_category_packages(category)) + "']")
         click_element("//select[@name = 'fq']//option[text() = '" + str(colour) + "']")
-    elif not isinstance(category, int) and isinstance(colour, int):
+    elif not filter_packages_is_number(category) and filter_packages_is_number(colour):
         click_element("//select[@name = 'f']//option[text() = '" + str(category) + "']")
         click_element("//select[@name = 'fq']//option[text() = '" + str(quality_pack(colour)) + "']")
-    elif not isinstance(category, int) and not isinstance(colour, int):
+    elif not filter_packages_is_number(category) and not filter_packages_is_number(colour):
         click_element("//select[@name = 'f']//option[text() = '" + str(category) + "']")
         click_element("//select[@name = 'fq']//option[text() = '" + str(colour) + "']")
     click_element("//input[@value = 'Filtr']")
+
+def filter_packages_is_number(variable):
+    try:
+        int(variable)
+        return True
+    except:
+        return False
 
 def open_backpack(variable):
     click_element("//a[@data-bag-number='"+variable+"']")
@@ -909,9 +920,12 @@ def sell_items():
     gold_counter = int(get_gold_value()) - gold_counter
     print("Successfully ended sellings items..")
     print("Totally sold " + str(item_counter) + " items for total " + str(gold_counter) + " gold!")
+    print()
     
 def sell_items_find_ready_objects(elements, category, names):
-    purple, orange, red = sell_items_read_colours()
+    purple = config_return_bool("sell_items","purple")
+    orange = config_return_bool("sell_items","orange")
+    red = config_return_bool("sell_items","red")
     filtr = []
     collection_ready = []
     for element in elements:
@@ -931,20 +945,6 @@ def sell_items_find_ready_objects(elements, category, names):
                 collection_ready.append(
                     (element.get_attribute("class").rstrip(' '))[0])
     return collection_ready
-
-def sell_items_read_colours():
-    lines = [line.rstrip('\n')for line in open('settings_packages'+config.get("login","server"))]
-    purple = False
-    orange = False
-    red = False
-    for line in lines:
-        if 'purple' in line:
-            purple = return_false_true(re.findall("\'(.*?)\'", line)[0])
-        elif 'orange' in line:
-            orange = return_false_true(re.findall("\'(.*?)\'", line)[0])
-        elif 'red' in line:
-            red = return_false_true(re.findall("\'(.*?)\'", line)[0])
-    return purple, orange, red
 
 def sell_items_npc(npc_name, page):
     main_menu_navigation("//div[contains(@id,'submenu')]//a[text() = '"+str(npc_name)+"']")
@@ -1277,9 +1277,9 @@ print()
 
 # main-botting
 login()
-display_info()
 sell_items()
-auction_house()
+display_info()
+
 exit_dungeons = False
 exp = True
 dung = True
@@ -1294,9 +1294,7 @@ while exp or dung:
         take_hades_costume()
         exp = expedition()
         dung = dungeon(exit_dungeons)
-    if iterator == 5:
-        pack_gold()
-        iterator = 0
+    pack_gold()
 sell_items()
 pack_gold()
 pack_search()
