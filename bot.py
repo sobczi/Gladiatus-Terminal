@@ -26,13 +26,24 @@ def get_element(path):
     return driver.find_element_by_xpath(path)
 
 def move_move(path1, path2):
+    if isinstance(path1, str):
+        element1 = driver.find_element_by_xpath(path1)
+    else:
+        element1 = path1
+    if isinstance(path2, str):
+        element2 = driver.find_element_by_xpath(path2)
+    else:
+        element2 = path2
+
     action = ActionChains(driver)
-    wait_for_element(path1)
-    element = driver.find_element_by_xpath(path1)
-    action.click_and_hold(element)
-    wait_for_element(path2)
-    element2 = driver.find_element_by_xpath(path2)
+    action.click_and_hold(element1)
     action.move_to_element(element2)
+    action.perform()
+
+def move_release(path1, path2):
+    action = ActionChains(driver)
+    action.click_and_hold(driver.find_element_by_xpath(path1))
+    action.release(driver.find_element_by_xpath(path2))
     action.perform()
 
 def mouse_move(path):
@@ -1246,6 +1257,111 @@ def arena_navigation():
             click_element("//*[@id='mainnav']/li/table/tbody/tr/td[1]/a")
             return
 
+def extract():
+    if not config_return_bool("extract","extract"):
+        return
+    print("Extracting items..")
+    extract_get()
+    print("Melting items..")
+    main_menu_navigation("//a[contains(text(),'Roztapiarka')]")
+    open_backpack(config.get("backpacks","extract_backpack"))
+    inv_draggable = "//div[@id='inv']//div[contains(@class,'ui-draggable')]"
+    if not search_element(inv_draggable):
+        print("Didnt found any items..")
+        return
+    for i in range(2):
+        first_path = "//div[contains(@class,'forge_closed " + str(i) + "')]"
+        second_path = "//div[contains(@class,'forge_finished-succeeded " + str(i) + "')]"
+        if search_element(first_path):
+            click_element(first_path)
+        elif search_element(second_path):
+            click_element(second_path)
+            click_element("//div[contains(text(),'Wyślij jako pakiet')]")
+        else:
+            continue
+        move_release(inv_draggable,"//fieldset[@id='crafting_input']//div[@class='ui-droppable']")
+        click_element("//div[@class='icon_gold']")
+        print("Successfully used " + str(i) + ". melting box..")
+    print("Storing components..")
+    extract_store()
+    print()
+    
+def extract_get():
+    print("Getting items for extract..")
+    colours = ["Mars (purpurowy)", "Jupiter (pomarańczowy)", "Olimp (czerwony)"]
+    colours_bools = [config_return_bool("extract","purple"), config_return_bool("extract","orange"), config_return_bool("extract","red")]
+    invalid_types = ["64","4096","8192","32768"]
+
+    packages_navigation()
+    for i in range(3):
+        if colours_bools[i]:
+            filter_packages(0,colours[i])
+            break
+
+    if search_element("//a[@class='paging_button paging_right_full']"):
+        click_element("//a[@class='paging_button paging_right_full']")
+
+    while True:
+        open_backpack(config.get("backpacks","extract_backpack"))
+        all_items = driver.find_elements_by_xpath("//div[@id='packages']//div[contains(@class,'ui-draggable')]")
+        good_items = []
+        for i in range(len(all_items)-1,-1):
+            good = True
+            for j in range(len(invalid_types)):
+                if all_items[i].get_attribute("data-content-type") == invalid_types[j]:
+                    good = False
+                    break
+            if good:
+                good_items.append(all_items[i])
+
+        if not good_items:
+            return
+
+        for i in range(len(good_items)-1,-1):
+            if good_items[i].get_attribute("data-quality") == "4" and config.get("extract","red") or\
+                good_items[i].get_attribute("data-quality") == "3" and config.get("extract","orange") or\
+                    good_items[i].get_attribute("data-quality") == "3" and config.get("extract","orange"):
+                if not extract_get_move(good_items[i]):
+                    return
+
+        if search_element("//a[@class='paging_button paging_left_step']"):
+            click_element("//a[@class='paging_button paging_left_step']")
+        else:
+            break
+
+def extract_get_move(element):
+    move_move(element,"//input[@name='show-item-info']")
+    if search_element("//div[contains(@class,'active')]"):
+        release("//div[contains(@class,'active')]")
+        return True
+    else:
+        return False
+
+def extract_store():
+    main_menu_navigation("//a[contains(text(),'Magazyn surowców')]")
+    if search_element("//button[@id='store'][@disabled='']"):
+        click_element("//input[@id='from-packages']")
+    click_element("//button[contains(text(),'Jazda!')]")
+
+def take_gold():
+    if not config_return_bool("take_gold","take_gold"):
+        return
+    print("Taking out gold..")
+    packages_navigation()
+    filter_packages("Złoto",0)
+    if search_element("//a[@class='paging_button paging_right_full']"):
+        click_element("//a[@class='paging_button paging_right_full']")
+    while True:
+        if get_gold_value() > int(config.get("take_gold","gold_limit_value")) and config_return_bool("take_gold","gold_limit"):
+            print()
+            return
+        path_gold = "//div[@class='packageItem']//div[contains(@class,'ui-draggable')]"
+        if search_element(path_gold):
+            move_move(path_gold,"//div[@id='inv']")
+        else:
+            print()
+            return    
+
 # main-settings
 clear()
 debug = True
@@ -1277,7 +1393,6 @@ print()
 
 # main-botting
 login()
-sell_items()
 display_info()
 
 exit_dungeons = False
@@ -1298,5 +1413,6 @@ while exp or dung:
 sell_items()
 pack_gold()
 pack_search()
+extract()
 print("Bot done work.. Closing webdriver..")
 driver.close()
