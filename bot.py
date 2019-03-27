@@ -81,9 +81,36 @@ def wait_for_element(path):
     while not search_element(path):
         time.sleep(0.05)
 
+def get_digits(path):
+    string = driver.find_element_by_xpath(path).text
+    tmp = ""
+    for s in string:
+        if s.isdigit():
+            tmp += s
+        if s == "\n":
+            break
+    return tmp
 # gladiatus: system functions
 
 def display_info():
+    def _get_stats(arena):
+        if arena:
+            variable = "Arena"
+        else:
+            variable = "Turma"
+        all_fights = int(config.get("stats","lose_"+variable)) + int(config.get("stats","win_"+variable))
+        win = int(config.get("stats","win_"+variable))
+        return int(round((win/all_fights)*100))
+
+    def _update_time():
+        global start_time
+        end_time = time.time()
+        config.set("stats","time",
+            str(int(config.get("stats","time"))+int(round(end_time - start_time))))
+        config_save()
+        start_time = time.time()
+
+    _update_time()
     hp = get_hp_value()
     hp = hp + "%"
     progress = driver.find_element_by_id('header_values_xp_percent').text
@@ -96,6 +123,31 @@ def display_info():
     print("Player: " + config.get("login","login") + ", World: " + config.get("login","server") + ", HP: " + hp)
     print("Level: " + level + ", Progress: " + progress + ", Rank: " + rank)
     print("Gold: " + gold + ", Rubles: " + rubles)
+    print()
+    print("Some stats:")
+
+    print("Tottaly farmed " + "{:,}".format(int(config.get("stats","gold_earned"))) + " gold.")
+    if config_return_bool("farm","arena"):
+        print("Winning percentage of Arena: " + str(_get_stats(True))+"%" +
+            " (Wins: " + str(config.get("stats","win_Arena") + " | Loses: " +
+             str(config.get("stats","lose_Arena")) + ")"))
+
+    if config_return_bool("farm","turma"):
+        print("Winning percentage of Turma: " + str(_get_stats(False))+"%" +
+             " (Wins: " + str(config.get("stats","win_Turma") + " | Loses: " +
+              str(config.get("stats","lose_Turma")) + ")"))
+
+    print("Spent totally " + str(config.get("stats","expedition_points")) +
+     " expedition points and " + str(config.get("stats","dungeon_points")) + " dungeon points.")
+
+    if config_return_bool("pack_gold","pack_gold"):
+        print("Packed totally: " + "{:,}".format(int(config.get("stats","packed"))) + " gold.")
+
+    if config_return_bool("sell_items","sell_items"):
+        print("Sold totally: " + "{:,}".format(int(config.get("stats","sold_items"))) +
+         " items for " + "{:,}".format(int(config.get("stats","sold_gold"))) + " gold.")
+
+    print("You totally saved on this server: " + str(time.strftime('%H:%M:%S', time.gmtime(int(config.get("stats","time"))))) + " time.")
     print()
 
 def return_false_true(variable):
@@ -308,7 +360,10 @@ def expedition():
     temp1 = driver.find_element_by_xpath("//table[@style='border-spacing:0;']//td[2]").text
     print("Result of fight: " + temp1)
     print()
-
+    config.set("stats","expedition_points", str(int(config.get("stats","expedition_points"))+1))
+    if "sobczi" in temp1:
+        config.set("stats","gold_earned", str(int(config.get("stats","gold_earned"))+int(get_digits("//table/tbody/tr/td/p[1]"))))
+    config_save()
     if points == '1':
         return False
     else:
@@ -368,7 +423,10 @@ def dungeon(exit_dungeons):
     temp1 = driver.find_element_by_xpath("//table[@style='border-spacing:0;']//td[2]").text
     print("Result of fight: " + temp1)
     print()
-
+    config.set("stats","dungeon_points", str(int(config.get("stats","dungeon_points"))+1))
+    if "sobczi" in temp1:
+        config.set("stats","gold_earned", str(int(config.get("stats","gold_earned"))+int(get_digits("//table/tbody/tr/td/p[1]"))))
+    config_save()
     if points == '1':
         return False
     else:
@@ -449,13 +507,14 @@ class Pack():
                     found_case += 1
                 elif not bought and search_element("//a[contains(text(),'Następna strona')]") and found_case == len(lines)-1:
                     found_case = orginal_case
-                elif not bought and search_element("//a[contains(text(),'Następna strona')]") == False and found_case == len(lines)-1:
+                    click_element("//a[contains(text(),'Następna strona')]")
+                elif not bought and not search_element("//a[contains(text(),'Następna strona')]") and found_case == len(lines)-1:
                     print("Avalibe pack not found..")
                     print()
                     return
 
             # prepare xpaths
-            print("Bought pack for " + str(price_temp) + "..")
+            print("Bought pack for " + "{:,}".format(int(price_temp)) + "..")
             path, path2 = self._pack_prepare_xpath(classes[found_case], soulbound_temp, level_temp, quality_temp, amount_temp)
             # gib it back niggur
             success_market = False
@@ -474,6 +533,8 @@ class Pack():
                     expedition()
                 else:
                     print("Sucessfully returned pack to guild market..")
+                    config.set("stats","packed",str(int(config.get("stats","packed")) + int(price_temp)))
+                    config_save()
                     success_market = True
         print()
 
@@ -762,7 +823,6 @@ class Pack():
             return True
         else:
             return False
-
     def _pack_prepare_xpath(self, name, soulbound, level, quality, amount):
         path = "//div[@class='packageItem']//div"
         path2 = "//div[@id='inv']//div"
@@ -951,8 +1011,11 @@ class Sell_items():
                             found = True
         gold_counter = int(get_gold_value()) - gold_counter
         print("Successfully ended sellings items..")
-        print("Totally sold " + str(item_counter) + " items for total " + str(gold_counter) + " gold!")
+        print("Totally sold " + "{:,}".format(int(item_counter)) + " items for total " + "{:,}".format(int(gold_counter)) + " gold!")
         print()
+        config.set("stats","sold_items",str(item_counter))
+        config.set("stats","sold_gold",str(gold_counter))
+        config_save()
         
     def _sell_items_find_ready_objects(self, elements, category, names):
             purple = config_return_bool("sell_items","purple")
@@ -1244,6 +1307,20 @@ class Extract():
         self._extract_store()
         print()
         
+    def _extract_get_move(self,element):
+            move_move(element,"//input[@name='show-item-info']")
+            if search_element("//div[contains(@class,'active')]"):
+                release("//div[contains(@class,'active')]")
+                return True
+            else:
+                return False
+    
+    def _extract_store(self):
+            main_menu_navigation("//a[contains(text(),'Magazyn surowców')]")
+            if search_element("//button[@id='store'][@disabled='']"):
+                click_element("//input[@id='from-packages']")
+            click_element("//button[contains(text(),'Jazda!')]")
+
     def _extract_get(self):
             print("Getting items for extract..")
             colours = ["Mars (purpurowy)", "Jupiter (pomarańczowy)", "Olimp (czerwony)"]
@@ -1287,22 +1364,65 @@ class Extract():
                 else:
                     break
 
-    def _extract_get_move(self,element):
-            move_move(element,"//input[@name='show-item-info']")
-            if search_element("//div[contains(@class,'active')]"):
-                release("//div[contains(@class,'active')]")
-                return True
-            else:
-                return False
-    
-    def _extract_store(self):
-            main_menu_navigation("//a[contains(text(),'Magazyn surowców')]")
-            if search_element("//button[@id='store'][@disabled='']"):
-                click_element("//input[@id='from-packages']")
-            click_element("//button[contains(text(),'Jazda!')]")
+class Farm():
+    def Arena(self, arena):
+        if arena:
+            if not config_return_bool("farm","arena"):
+                return
+            variable1 = "Arena"
+            variable2 = "areny"
+            variable3 = "Arena"
+            variable4 = "arena"
+        else:
+            if not config_return_bool("farm","turma"):
+                return
+            variable1 = "Turma"
+            variable2 = "Circus Turma"
+            variable3 = "Circus"
+            variable4 = "ct"
+
+        heal_me()
+        print("Waiting for "+variable1+"..")
+        wait_for_element("//div[@id='cooldown_bar_text_"+variable4+"'][text() = 'Do "+variable2+"']")
+        arena_navigation()
+        click_element("//a[contains(@class,'awesome-tabs')][text() = '"+variable3+" Provinciarum']")
+
+        best_choice, best_choice_level = self._find_best_choice_arena()
+        print("Found weakest level: " + str(best_choice_level) + "..")
+        print("Attacking " + driver.find_element_by_xpath("//section[contains(@id,'own')]//tbody/tr["+str(best_choice)+"]/td[1]").text + "..")
+        click_element("//section[contains(@id,'own')]//tbody/tr["+str(best_choice)+"]//div[@class='attack']")
+
+        wait_for_element("//table[@style='border-spacing:0;']//td[2]")
+        temp1 = driver.find_element_by_xpath("//table[@style='border-spacing:0;']//td[2]").text
+        print("Result of fight: " + temp1)
+        print()
+        if "sobczi" in temp1:
+            config.set("stats","win_"+variable1+"", str(int(config.get("stats","win_"+variable1))+1))
+        else:
+            config.set("stats","lose_"+variable1+"", str(int(config.get("stats","lose_"+variable1))+1))
+        if "sobczi" in temp1:
+            config.set("stats","gold_earned", str(int(config.get("stats","gold_earned"))+int(get_digits("//table/tbody/tr/td/p[1]"))))
+        config_save()
+                
+
+    def _find_best_choice_arena(self):
+        best_choice = 0
+        best_choice_level = 0
+        first_time = True
+        for i in range(2,6):
+            level = int(driver.find_element_by_xpath("//section[contains(@id,'own')]//tbody/tr["+str(i)+"]/td[2]").text)
+            if first_time:
+                best_choice = i
+                best_choice_level = level
+                first_time = False
+            elif level < best_choice_level:
+                best_choice = i
+                best_choice_level = level
+        return best_choice, best_choice_level
 
 # main-settings
 clear()
+start_time = time.time()
 debug = True
 try:
     if sys.argv[1]:
@@ -1343,6 +1463,8 @@ while exp or dung:
     iterator += 1
     exp = expedition()
     dung = dungeon(exit_dungeons)
+    Farm().Arena(True)
+    Farm().Arena(False)
     display_info()
     if not exp and not dung:
         take_hades_costume()
@@ -1354,5 +1476,6 @@ Pack().pack_gold()
 Pack().pack_search()
 Extract().extract()
 Auction_house().auction_house()
+display_info()
 print("Bot done work.. Closing webdriver..")
 driver.close()
