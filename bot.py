@@ -23,6 +23,8 @@ def search_element(path):
 def get_element(path):
     while not search_element(path):
         time.sleep(1)
+    #while not driver.find_element_by_xpath(path).is_displayed():
+        #time.sleep(1)
     return driver.find_element_by_xpath(path)
 
 def move_move(path1, path2):
@@ -41,10 +43,19 @@ def move_move(path1, path2):
     action.perform()
 
 def move_release(path1, path2):
-    action = ActionChains(driver)
-    action.click_and_hold(driver.find_element_by_xpath(path1))
-    action.release(driver.find_element_by_xpath(path2))
-    action.perform()
+    while True:
+        try:
+            if isinstance(path1, str):
+                path1 = get_element(path1)
+            if isinstance(path2, str):
+                path2 = get_element(path2)
+            action = ActionChains(driver)
+            action.click_and_hold(path1)
+            action.release(path2)
+            action.perform()
+            return
+        except:
+            continue
 
 def mouse_move(path):
     action = ActionChains(driver)
@@ -99,6 +110,8 @@ def display_info():
         else:
             variable = "Turma"
         all_fights = int(config.get("stats","lose_"+variable)) + int(config.get("stats","win_"+variable))
+        if all_fights == 0:
+            all_fights = 1
         win = int(config.get("stats","win_"+variable))
         return int(round((win/all_fights)*100))
 
@@ -305,33 +318,19 @@ def take_gold():
     if not config_return_bool("take_gold","take_gold"):
         return
 
-    def calculate_difference(element):
-        return int(best_element.get_attribute("data-price-gold")) + get_gold_value() - int(config.get("take_gold","gold_limit_value"))
-
     print("Taking out gold..")
     packages_navigation()
     Pack().filter_packages("Złoto",0)
-    if search_element("//a[@class='paging_button paging_right_full']"):
-        click_element("//a[@class='paging_button paging_right_full']")
+    open_backpack(config.get("backpacks","free_backpack"))
     while True:
-        if get_gold_value() > int(config.get("take_gold","gold_limit_value")) and config_return_bool("take_gold","gold_limit"):
-            print()
+        elements = driver.find_elements_by_xpath("//div[@class='packageItem']//div[contains(@class,'ui-draggable')]")
+        if not elements:
             return
-        if search_element("//div[@class='packageItem']//div[contains(@class,'ui-draggable')]"):
-            elements = driver.find_elements_by_xpath("//div[@class='packageItem']//div[contains(@class,'ui-draggable')]")
-            if int(elements[len(elements)].get_attribute("data-price-gold")) + get_gold_value() < int(config.get("take_gold","gold_limit_value")):
-                move_move(elements[len(elements)],"//div[@id='inv']")
-            else:
-                best_element = elements[len(elements)]
-                best_diff = calculate_difference(best_element)
-                for element in elements:
-                    if calculate_difference(element) < best_diff:
-                        best_element = element
-                        best_diff = calculate_difference(element)
-                move_move(best_element,"//div[@id='inv']")
-        else:
-            print()
-            return    
+        for element in elements:
+            gold_before = int(get_gold_value())
+            move_release(element,"//div[@id='inv']")
+            while gold_before == int(get_gold_value()):
+                time.sleep(0.05)
 
 # gladiatus: main classes
 
@@ -356,6 +355,7 @@ def expedition():
     temp2 = driver.find_element_by_xpath("//div[@class='expedition_box']["+config.get("farm","expedition_option")+"]//div[@class='expedition_name']").text
     print("Attacking.. " + temp1 + " -> " + temp2)
     click_element("//button[contains(@onclick,'"+config.get("farm","expedition_option")+"')]")
+
     wait_for_element("//table[@style='border-spacing:0;']//td[2]")
     temp1 = driver.find_element_by_xpath("//table[@style='border-spacing:0;']//td[2]").text
     print("Result of fight: " + temp1)
@@ -405,20 +405,7 @@ def dungeon(exit_dungeons):
     temp1 = driver.find_element_by_xpath("//span[@class='dungeon_header_open']").text
     print("Attacking.. " + temp1)
 
-    onClick = driver.find_elements_by_xpath("//*[contains(@onclick,'startFight')]")
-    for button in onClick:
-        try:
-            click_element("//img[contains(@src,'combatloc.gif')]")
-            break
-        except:
-            pass
-
-        try:
-            click_element(button)
-            break
-        except:
-            pass
-
+    click_element("//img[contains(@src,'combatloc.gif')]")
     wait_for_element("//table[@style='border-spacing:0;']//td[2]")
     temp1 = driver.find_element_by_xpath("//table[@style='border-spacing:0;']//td[2]").text
     print("Result of fight: " + temp1)
@@ -1013,8 +1000,8 @@ class Sell_items():
         print("Successfully ended sellings items..")
         print("Totally sold " + "{:,}".format(int(item_counter)) + " items for total " + "{:,}".format(int(gold_counter)) + " gold!")
         print()
-        config.set("stats","sold_items",str(item_counter))
-        config.set("stats","sold_gold",str(gold_counter))
+        config.set("stats","sold_items",str(int(config.get("stats","sold_items")) + int(item_counter)))
+        config.set("stats","sold_gold",str(int(config.get("stats","sold_gold")) + int(gold_counter)))
         config_save()
         
     def _sell_items_find_ready_objects(self, elements, category, names):
@@ -1302,12 +1289,13 @@ class Extract():
                 continue
             move_release(inv_draggable,"//fieldset[@id='crafting_input']//div[@class='ui-droppable']")
             click_element("//div[@class='icon_gold']")
-            print("Successfully used " + str(i) + ". melting box..")
+            print("Successfully used " + str(i+1) + ". melting box..")
         print("Storing components..")
         self._extract_store()
         print()
         
     def _extract_get_move(self,element):
+            open_backpack(config.get("backpacks","extract_backpack"))
             move_move(element,"//input[@name='show-item-info']")
             if search_element("//div[contains(@class,'active')]"):
                 release("//div[contains(@class,'active')]")
@@ -1319,50 +1307,76 @@ class Extract():
             main_menu_navigation("//a[contains(text(),'Magazyn surowców')]")
             if search_element("//button[@id='store'][@disabled='']"):
                 click_element("//input[@id='from-packages']")
-            click_element("//button[contains(text(),'Jazda!')]")
+            click_element("//button[@id='store']")
 
     def _extract_get(self):
             print("Getting items for extract..")
-            colours = ["Mars (purpurowy)", "Jupiter (pomarańczowy)", "Olimp (czerwony)"]
-            colours_bools = [config_return_bool("extract","purple"), config_return_bool("extract","orange"), config_return_bool("extract","red")]
+            colours = ["Neptun (niebieski)","Mars (purpurowy)", "Jupiter (pomarańczowy)", "Olimp (czerwony)"]
+            colours_bools = [False, config_return_bool("extract","purple"), config_return_bool("extract","orange"), config_return_bool("extract","red")]
             invalid_types = ["64","4096","8192","32768"]
 
+            first_time = True
             packages_navigation()
-            for i in range(3):
-                if colours_bools[i]:
-                    Pack().filter_packages(0,colours[i])
-                    break
-
-            if search_element("//a[@class='paging_button paging_right_full']"):
-                click_element("//a[@class='paging_button paging_right_full']")
+            open_backpack(config.get("backpacks","extract_backpack"))
+            empty = False
+            if not search_element("//div[@id='inv']//div[contains(@class,'ui-draggable')]"):
+                empty = True
 
             while True:
-                open_backpack(config.get("backpacks","extract_backpack"))
-                all_items = driver.find_elements_by_xpath("//div[@id='packages']//div[contains(@class,'ui-draggable')]")
-                good_items = []
-                for i in range(len(all_items)-1,-1):
-                    good = True
-                    for j in range(len(invalid_types)):
-                        if all_items[i].get_attribute("data-content-type") == invalid_types[j]:
-                            good = False
-                            break
-                    if good:
-                        good_items.append(all_items[i])
+                change_category = True
+                for i in range(1,4):
+                    if first_time:
+                        if not colours_bools[i]:
+                            continue
+                        if change_category:
+                            Pack().filter_packages(0,colours[i])
+                    elif empty:
+                        if change_category:
+                            Pack().filter_packages(0,colours[0])
+                    if change_category:
+                        if search_element("//a[@class='paging_button paging_right_full']"):
+                            click_element("//a[@class='paging_button paging_right_full']")
+                    change_category = True
 
-                if not good_items:
-                    return
+                    all_items = driver.find_elements_by_xpath("//div[@id='packages']//div[contains(@class,'ui-draggable')]")
+                    good_items = []
+                    for i in range(len(all_items)):
+                        good = True
+                        for j in range(len(invalid_types)):
+                            if all_items[i].get_attribute("data-content-type") == invalid_types[j]:
+                                good = False
+                                break
+                        if good:
+                            good_items.append(all_items[i])
 
-                for i in range(len(good_items)-1,-1):
-                    if good_items[i].get_attribute("data-quality") == "4" and config.get("extract","red") or\
-                        good_items[i].get_attribute("data-quality") == "3" and config.get("extract","orange") or\
-                            good_items[i].get_attribute("data-quality") == "3" and config.get("extract","orange"):
-                        if not _extract_get_move(good_items[i]):
+                    if not good_items and search_element("//a[@class='paging_button paging_left_step']"):
+                        click_element("//a[@class='paging_button paging_left_step']")
+                        change_category = False
+                        continue
+
+                    if not good_items:
+                        if not first_time:
                             return
+                        continue
 
-                if search_element("//a[@class='paging_button paging_left_step']"):
-                    click_element("//a[@class='paging_button paging_left_step']")
+                    for i in range(len(good_items)):
+                        if good_items[i].get_attribute("data-quality") == "4" and config.get("extract","red") or\
+                            good_items[i].get_attribute("data-quality") == "3" and config.get("extract","orange") or\
+                                good_items[i].get_attribute("data-quality") == "3" and config.get("extract","orange") or not first_time:
+                            if not self._extract_get_move(good_items[i]):
+                                return
+
+                    if search_element("//a[@class='paging_button paging_left_step']"):
+                        click_element("//a[@class='paging_button paging_left_step']")
+                    else:
+                        break
+
+                    if not first_time:
+                        return
+                if first_time:
+                    first_time = False
                 else:
-                    break
+                    return
 
 class Farm():
     def Arena(self, arena):
@@ -1433,7 +1447,7 @@ except:
         print("Example -> python3 file.py 35")
         sys.exit()
     else:
-        config_name = "config35.ini"
+        config_name = "config39.ini"
     
 config = SafeConfigParser()
 config.read(config_name)
@@ -1441,11 +1455,11 @@ config.read(config_name)
 chrome_options = Options()
 if config_return_bool("top","headless"):
     chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--windows-size=1920,1080")
+    chrome_options.add_argument("--disable-gpu")
+else:
     chrome_options.add_argument("--start-maximized")
 driver = webdriver.Chrome("./chromedriver", chrome_options=chrome_options)
-driver.maximize_window()
 
 print("Logging in as " + config.get("login","login") + " at server " + config.get("login","server") + "..")
 print()
@@ -1471,9 +1485,9 @@ while exp or dung:
         exp = expedition()
         dung = dungeon(exit_dungeons)
     Pack().pack_gold()
+Pack().pack_search()
 Sell_items().sell_items()
 Pack().pack_gold()
-Pack().pack_search()
 Extract().extract()
 Auction_house().auction_house()
 display_info()
